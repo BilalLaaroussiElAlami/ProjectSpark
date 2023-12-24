@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/BogDataSpark2324.iml" filepath="$PROJECT_DIR$/.idea/modules/BogDataSpark2324.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/BogDataSpark2324-build.iml" filepath="$PROJECT_DIR$/.idea/modules/BogDataSpark2324-build.iml" />
     </modules>
   </component>
 </project>
