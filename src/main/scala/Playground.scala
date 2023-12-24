@@ -1,3 +1,4 @@
+/*
 import org.apache.spark.{SparkConf, SparkContext}
 
 object Playground extends App {
@@ -47,4 +48,5 @@ object Playground extends App {
   val fourthTweet =  tweetsRDD.take(4).tail.tail.tail.head
   println("fourth tweet: ", fourthTweet)
   println("fourth tweet is embedded?: ", isEmbedded(fourthTweet))
+  */
   */
