@@ -1,3 +1,4 @@
+import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import play.api.libs.json._
 
@@ -17,6 +18,8 @@ object Main extends App{
   case class Tweet(text: String,
                    hashTags: Array[Tag],
                    followers_count: Int,
+                   reply_count: Int,
+                   retweet_count:Int,
                    likes: Likes)
 
   def stringToJson(tweet: String): Option[JsValue] = {
@@ -58,8 +61,9 @@ object Main extends App{
     println(jsonTweet \ "user" \ "favourites_count")
     println( (jsonTweet \ "user" \ "favourites_count").asOpt[Int].getOrElse(0))
     println()*/
-
-    Tweet(text,hashtags,followers_count,likes)
+    val reply_count = (jsonTweet \ "reply_count").asOpt[Int].getOrElse(0)
+    val retweet_count = (jsonTweet \ "user" \ "retweet_count").asOpt[Int].getOrElse(0)
+    Tweet(text,hashtags,followers_count,reply_count,retweet_count, likes)
   }
 
   def parseTweet(tweet:String):Option[Tweet] = {
@@ -81,10 +85,18 @@ object Main extends App{
   val embeddedTweetsJsonsRDD = tweetsJsonsRDD.map(getEmbeddedTweet).filter(_.nonEmpty).map(_.get)
   embeddedTweetsJsonsRDD.foreach(println("x", _))
 */
-  val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get).persist()
+  val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get).persist()  //persisting because this source might be used in multiple pipelines
   tweets.collect().foreach(println)   //calling collect is not necessary locally
 
+  /*
+  type Feature = Float
+  type FeatureTuple = (Feature, Feature, Likes)
+  def extractFeatures(tweets: RDD[Tweet]): RDD[FeatureTuple] = ???
+  val featureRDD = extractFeatures(tweets)
 
+  def scaleFeatures (featureRDD: RDD[FeatureTuple]): RDD[FeatureTuple] = ???
+  val scaledFeatureRDD = scaleFeatures(featureRDD)
+*/
 
 
 
