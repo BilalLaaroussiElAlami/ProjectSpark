@@ -12,14 +12,18 @@ object Main extends App{
   val y  = x.map(_*2);
   println(y.collect().mkString("Array(", ", ", ")"))
 
-
+  type TextLength = Int
   type Tag = String
+  type FollowersCount = Int
+  type ReplyCount = Int
+  type RetweetCount = Int
   type Likes = Int
   case class Tweet(text: String,
+                   textLength: TextLength,
                    hashTags: Array[Tag],
-                   followers_count: Int,
-                   reply_count: Int,
-                   retweet_count:Int,
+                   followers_count: FollowersCount,
+                   reply_count: ReplyCount,
+                   retweet_count:RetweetCount,
                    likes: Likes)
 
   def stringToJson(tweet: String): Option[JsValue] = {
@@ -56,14 +60,9 @@ object Main extends App{
     val followers_count = (jsonTweet \ "user" \ "followers_count").asOpt[Int].getOrElse(0)
     val likes = (jsonTweet \ "user" \ "favourites_count").asOpt[Int].getOrElse(0)
 
-    /*
-    println(jsonTweet \ "user")
-    println(jsonTweet \ "user" \ "favourites_count")
-    println( (jsonTweet \ "user" \ "favourites_count").asOpt[Int].getOrElse(0))
-    println()*/
     val reply_count = (jsonTweet \ "reply_count").asOpt[Int].getOrElse(0)
     val retweet_count = (jsonTweet \ "user" \ "retweet_count").asOpt[Int].getOrElse(0)
-    Tweet(text,hashtags,followers_count,reply_count,retweet_count, likes)
+    Tweet(text, text.length,  hashtags,followers_count,reply_count,retweet_count, likes)
   }
 
   def parseTweet(tweet:String):Option[Tweet] = {
@@ -88,15 +87,105 @@ object Main extends App{
   val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get).persist()  //persisting because this source might be used in multiple pipelines
   tweets.collect().foreach(println)   //calling collect is not necessary locally
 
-  /*
+/*
+  text: String
+  ,
+  textLength: TextLength
+  ,
+  hashTags: Array[Tag]
+  ,
+  followers_count: Followers_count
+  ,
+  reply_count: Reply_count
+  ,
+  retweet_count: Retweet_count
+  ,
+  likes: Likes
+  )
+*/
+
   type Feature = Float
-  type FeatureTuple = (Feature, Feature, Likes)
-  def extractFeatures(tweets: RDD[Tweet]): RDD[FeatureTuple] = ???
+  type X0 = Int
+  type FeatureTuple = (X0, TextLength, FollowersCount, ReplyCount, RetweetCount, Likes)
+  def extractFeatures(tweets: RDD[Tweet]): RDD[FeatureTuple] = tweets.map( twt => (1, twt.textLength, twt.followers_count,twt.reply_count,twt.retweet_count, twt.likes))
   val featureRDD = extractFeatures(tweets)
 
-  def scaleFeatures (featureRDD: RDD[FeatureTuple]): RDD[FeatureTuple] = ???
+
+  /*
+  calculating sum and count --> average
+  take sum of squared difference
+   */
+
+  type accType = Tuple2[Int,List[Int]]
+
+  def seqOp(acc: accType , featureTuple: FeatureTuple) = {
+    val newCount = acc._1 + 1
+    val oldSums  = acc._2
+    val newSums  = List(
+      oldSums(0)+ featureTuple._2,  //remember featureTuple._1 is X0
+      oldSums(1)+ featureTuple._3,
+      oldSums(2)+ featureTuple._4,
+      oldSums(3)+ featureTuple._5,
+      oldSums(4)+ featureTuple._6)
+    (newCount,newSums)
+  }
+  def binOp(accA: accType, accB: accType) = {
+    val newCount = accA._1 + accB._1
+    val newSums =  accA._2.zip(accB._2).map(p => p._1 + p._2)
+    (newCount,newSums)
+  }
+
+  def scaleFeatures (featureRDD: RDD[FeatureTuple]): RDD[FeatureTuple] = {
+    val (count, sums)  = featureRDD.aggregate(0,List(0,0,0,0,0))(seqOp, binOp)
+    val means = sums.map(_/count)
+
+    // (x_j^i - u_j)^2
+    val diffWithMeanSquared = featureRDD.map {
+      ftr =>
+        (
+          ftr._1,
+          Math.pow(ftr._2 - means(0), 2),
+          Math.pow(ftr._3 - means(1), 2),
+          Math.pow(ftr._4 - means(2), 2),
+          Math.pow(ftr._5 - means(3), 2),
+          Math.pow(ftr._6 - means(4), 2))
+    }
+
+
+    def seqop(acc: List[Double], tuple: Tuple6[X0, Double,Double,Double,Double,Double]) =
+    {
+      List(
+        acc(0) + tuple._2,
+        acc(1) + tuple._3,
+        acc(2) + tuple._4,
+        acc(3) + tuple._5,
+        acc(4) + tuple._6)
+    }
+    def binop = { (accA: List[Double], accB: List[Double]) => {
+      accA.zip(accB).map(p => p._1 + p._2)
+    }
+    }
+
+    //sum((x_j^i - u_j)^2)
+    val sumsOfSquaredDiffs = diffWithMeanSquared.aggregate(List(0.0,0.0,0.0,0.0,0.0))(seqop,binop)
+
+    val stdevs = sumsOfSquaredDiffs.map(sumsqrddiff =>  Math.sqrt(sumsqrddiff / count))
+
+
+    def calculateZvalues(featureTuple: FeatureTuple):List[Double] = {
+      List(
+      (featureTuple._2 - means(0)) / stdevs(0),
+      (featureTuple._3 - means(1)) / stdevs(1),
+      (featureTuple._4 - means(2)) / stdevs(2),
+      (featureTuple._5 - means(3)) / stdevs(3),
+      (featureTuple._6 - means(4)) / stdevs(4))
+
+    }
+     featureRDD.map(calculateZvalues)
+  }
+
   val scaledFeatureRDD = scaleFeatures(featureRDD)
-*/
+
 
 
 
