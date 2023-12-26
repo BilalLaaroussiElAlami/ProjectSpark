@@ -126,7 +126,7 @@ object Main extends App{
       oldSums(1)+ featureTuple._3,
       oldSums(2)+ featureTuple._4,
       oldSums(3)+ featureTuple._5,
-      oldSums(4)+ featureTuple._6)
+      oldSums(4)+ featureTuple._6)  //todo dependen variable stays same !!
     (newCount,newSums)
   }
   def binOp(accA: accType, accB: accType) = {
@@ -135,7 +135,7 @@ object Main extends App{
     (newCount,newSums)
   }
 
-  def scaleFeatures (featureRDD: RDD[FeatureTuple]): RDD[FeatureTuple] = {
+  def scaleFeatures (featureRDD: RDD[FeatureTuple]): RDD[Array[Double]] = {
     val (count, sums)  = featureRDD.aggregate(0,List(0,0,0,0,0))(seqOp, binOp)
     val means = sums.map(_/count)
 
@@ -172,20 +172,42 @@ object Main extends App{
     val stdevs = sumsOfSquaredDiffs.map(sumsqrddiff =>  Math.sqrt(sumsqrddiff / count))
 
 
-    def calculateZvalues(featureTuple: FeatureTuple):List[Double] = {
-      List(
-      (featureTuple._2 - means(0)) / stdevs(0),
-      (featureTuple._3 - means(1)) / stdevs(1),
-      (featureTuple._4 - means(2)) / stdevs(2),
-      (featureTuple._5 - means(3)) / stdevs(3),
-      (featureTuple._6 - means(4)) / stdevs(4))
-
+    def calculateZvalues(featureTuple: FeatureTuple):Array[Double] = {
+      Array(
+        featureTuple._1,
+        (featureTuple._2 - means(0)) / stdevs(0),
+        (featureTuple._3 - means(1)) / stdevs(1),
+        (featureTuple._4 - means(2)) / stdevs(2),
+        (featureTuple._5 - means(3)) / stdevs(3),
+        (featureTuple._6 - means(4)) / stdevs(4))
     }
-     featureRDD.map(calculateZvalues)
+    featureRDD.map(calculateZvalues)
   }
 
   val scaledFeatureRDD = scaleFeatures(featureRDD)
 
+
+  type Theta = Array[Float]
+
+  def H(theta:Theta,  X: Array[Double]): Double = {
+    if(theta.length != X.length){
+      throw new Exception("THETA LENGTH AND X LENGTH MUST BE THE SAME!")
+    }
+    else{
+      theta.zip(X).map(tpl => tpl._1 * tpl._2).sum
+    }
+  }
+
+  def cost(scaledFeatureRDD: RDD[Array[Double]], theta: Theta, m:Int): Double = {
+    (1.0 / 2 * m) *
+    scaledFeatureRDD.map{featureTuple =>
+      Math.pow( H(theta,featureTuple.dropRight(1)) - featureTuple.last , 2)
+    }.sum()
+  }
+
+  def gradientDescent(scaledFeatureRDD: RDD[FeatureTuple], theta: Theta, alpha: Float, sigma: Float): Theta = {
+  ???
+  }
 
 
 
