@@ -1,16 +1,40 @@
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import play.api.libs.json._
+import org.apache.log4j.Logger
+import org.apache.log4j.Level
+
+import java.io.{File, IOException, PrintWriter}
+
+
+
+
 
 
 object Main extends App{
+
+
+  val filePath = "fkezi.txt"
+  //source chatgpt: https://chat.openai.com/share/a3a00db4-062f-416a-903f-13cb5599f403
+  val writer = new PrintWriter(new File(filePath))
+  def printToFile(content: String): Unit = {
+    try {
+      writer.write(content)
+    } catch {
+      case e: IOException =>
+        println(s"An error occurred while writing to the file: ${e.getMessage}")
+    } finally {
+      writer.close()
+    }
+  }
+
   val conf = new SparkConf()
   conf.setAppName("Datasets Test")
   conf.setMaster("local[4]") //!!!!! TO REMOVE WHEN TESTING ON ISABELLE !!!!!!!
   val sc = new SparkContext(conf)
   val x = sc.parallelize(List(1,2,3))
   val y  = x.map(_*2);
-  println(y.collect().mkString("Array(", ", ", ")"))
+  //println(y.collect().mkString("Array(", ", ", ")"))
 
   type TextLength = Int
   type Tag = String
@@ -61,7 +85,7 @@ object Main extends App{
     val likes = (jsonTweet \ "user" \ "favourites_count").asOpt[Int].getOrElse(0)
 
     val reply_count = (jsonTweet \ "reply_count").asOpt[Int].getOrElse(0)
-    val retweet_count = (jsonTweet \ "user" \ "retweet_count").asOpt[Int].getOrElse(0)
+    val retweet_count = (jsonTweet \ "retweet_count").asOpt[Int].getOrElse(0)
     Tweet(text, text.length,  hashtags,followers_count,reply_count,retweet_count, likes)
   }
 
@@ -85,7 +109,7 @@ object Main extends App{
   embeddedTweetsJsonsRDD.foreach(println("x", _))
 */
   val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get).persist()  //persisting because this source might be used in multiple pipelines
-  tweets.collect().foreach(println)   //calling collect is not necessary locally
+  //tweets.collect().foreach(println)   //calling collect is not necessary locally
 
 /*
   text: String
@@ -103,12 +127,12 @@ object Main extends App{
   likes: Likes
   )
 */
-
   type Feature = Float
   type X0 = Int
   type FeatureTuple = (X0, TextLength, FollowersCount, ReplyCount, RetweetCount, Likes)
   def extractFeatures(tweets: RDD[Tweet]): RDD[FeatureTuple] = tweets.map( twt => (1, twt.textLength, twt.followers_count,twt.reply_count,twt.retweet_count, twt.likes))
   val featureRDD = extractFeatures(tweets)
+ // featureRDD.foreach(println)
 
 
   /*
@@ -126,7 +150,7 @@ object Main extends App{
       oldSums(1)+ featureTuple._3,
       oldSums(2)+ featureTuple._4,
       oldSums(3)+ featureTuple._5,
-      oldSums(4)+ featureTuple._6)  //todo dependen variable stays same !!
+      oldSums(4)+ featureTuple._6)  //todo dependent variable stays same !!
     (newCount,newSums)
   }
   def binOp(accA: accType, accB: accType) = {
@@ -185,30 +209,80 @@ object Main extends App{
   }
 
   val scaledFeatureRDD = scaleFeatures(featureRDD)
+  scaledFeatureRDD.foreach(arr =>  println(arr.mkString("(",",",")")))
 
 
   type Theta = Array[Float]
 
   def H(theta:Theta,  X: Array[Double]): Double = {
     if(theta.length != X.length){
-      throw new Exception("THETA LENGTH AND X LENGTH MUST BE THE SAME!")
+      throw new Exception(s"THETA LENGTH ${theta.length} AND X LENGTH ${X.length} MUST BE THE SAME!")
     }
     else{
       theta.zip(X).map(tpl => tpl._1 * tpl._2).sum
     }
   }
 
-  def cost(scaledFeatureRDD: RDD[Array[Double]], theta: Theta, m:Int): Double = {
+  def J(scaledFeatureRDD: RDD[Array[Double]], theta: Theta, m:Long): Double = {
     (1.0 / 2 * m) *
     scaledFeatureRDD.map{featureTuple =>
       Math.pow( H(theta,featureTuple.dropRight(1)) - featureTuple.last , 2)
     }.sum()
   }
 
-  def gradientDescent(scaledFeatureRDD: RDD[FeatureTuple], theta: Theta, alpha: Float, sigma: Float): Theta = {
-  ???
+
+  def JV2(RDDofCalculatedTerms : RDD[Double], theta: Theta, m:Long): Double = {
+    val teller = RDDofCalculatedTerms.map(x => x*x).sum()
+    val noemer =  (2.0 * m)
+    teller/noemer
+  }
+
+  /*the term (hθ (X(i) − y(i)) is common in both the calculation of the mean squared error and calculation of thetas
+  the function will calculate this commont term once, the other formulas will both use the result of the calculated persisted result
+  */
+  def CommonCalculation(scaledFeatureRDD: RDD[Array[Double]], theta: Theta): RDD[Double] = {
+    val res = scaledFeatureRDD.map(featureTuple => H(theta, featureTuple.dropRight(1)) - featureTuple.last)
+    val x = res.collect()
+    res
+  }
+
+  def CalcNewThetas(thetas:Theta, RDDofCalculatedTerms : RDD[Double], alfa:Double, m: Int): Theta = {
+    //hθ (X(i) ) − y(i) ) x(i)
+    ???
   }
 
 
 
+    def gradientDescent(scaledFeatureRDD: RDD[Array[Double]],initialTheta: Theta, alpha: Float, sigma: Float, m: Long): Theta = {
+      var theta:Theta = initialTheta
+      val commonMap = CommonCalculation(scaledFeatureRDD,theta)  //TODO change variable name
+      val error = JV2(commonMap, theta, m)
+      var delta:Float = 0
+      do{
+        val newTheta = Array.fill(theta.length)(0.0f)
+        val commonMap = CommonCalculation(scaledFeatureRDD,theta).persist()
+        val X = -alpha*(1.0/m)*commonMap.sum()
+        for(j <- 1 to theta.length){
+          val indexTheta = j - 1  //theta is array starting from 0 while tuples start index from 1 so difference is 1 for the same position
+          val Y = scaledFeatureRDD.map(ftrTuple => ftrTuple(j)).sum()
+          newTheta(indexTheta) = (theta(indexTheta) - X * Y  ).toFloat
+        }
+        theta = newTheta
+        delta = (error - JV2(commonMap,theta,m)).toFloat
+      }
+      while (delta > sigma)
+      theta
+  }
+
+
+  val n = scaledFeatureRDD.take(1)(0).length - 1
+
+  println("----------------n: ", n)
+  val initialTheta = Array.fill(n)(0.0f)
+  val alpha = 0.001f
+  val sigma = 0.001f
+  val m = featureRDD.count()
+  val thetas = gradientDescent(scaledFeatureRDD, initialTheta, alpha, sigma, m)
+
+  println(thetas.mkString("Array(",",", ")"))
 }
