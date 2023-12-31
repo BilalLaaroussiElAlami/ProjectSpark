@@ -1,0 +1,4 @@
+[0m[[0m[0mdebug[0m] [0m[0m> Exec(version, None, None)[0m
+[0m[[0m[0mdebug[0m] [0m[0mEvaluating tasks: version[0m
+[0m[[0m[0minfo[0m] [0m[0m0.1.0-SNAPSHOT[0m
+[0m[[0m[0mdebug[0m] [0m[0m> Exec(idea-shell, None, None)[0m

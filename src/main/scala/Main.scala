@@ -1,12 +1,6 @@
 import org.apache.spark.rdd.RDD
 import org.apache.spark.{SparkConf, SparkContext}
 import play.api.libs.json._
-import org.apache.log4j.Logger
-import org.apache.log4j.Level
-
-import java.io.{File, IOException, PrintWriter}
-
-
 object Main extends App {
 
   val conf = new SparkConf()
@@ -211,23 +205,24 @@ object Main extends App {
     res
   }
 
-  def gradientDescent(scaledFeatureRDD: RDD[Array[Double]], initialTheta: Theta, alpha: Float, sigma: Float, m: Long) = {
+  def gradientDescent(scaledFeatureRDD: RDD[Array[Double]], theta: Theta, alpha: Float, sigma: Float, m: Long) = {
     if(initialTheta.length != NindependentVars + 1) throw new Exception("THETA LENGTH NOT CORRECT")
-    var theta: Theta = initialTheta
     var commonMap = CommonCalculation(scaledFeatureRDD, theta) //TODO change variable name
-    val error = JV2(commonMap, m)
+    var error = JV2(commonMap, m)
     var delta: Float = 0
     do {
-      val newTheta = Array.fill(theta.length)(0.0f)
-      val X = -alpha * (1.0 / m) * commonMap.sum() //commonMap usage 1
+      val X = alpha * (1.0 / m) * commonMap.sum() //commonMap usage 1
       val YS = scaledFeatureRDD.aggregate(Array(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))((acc, arr) => acc.zip(arr).map(p => p._1 + p._2), (arrA, arrB) => arrA.zip(arrB).map(p => p._1 + p._2))
       for (j <- 0 until theta.length) {
         //val Y = scaledFeatureRDD.map(ftr => ftr(j)).sum()
-        newTheta(j) = (theta(j) - X * YS(j)).toFloat
+        theta(j) = (theta(j) - X * YS(j)).toFloat
       }
-      theta = newTheta
-      delta = (error - JV2(commonMap, m)).toFloat //commonMap usage 2
+      val newError =  JV2(commonMap, m) //commonMap usage 2
+      delta = (error - newError).toFloat
+      error = newError
       commonMap = CommonCalculation(scaledFeatureRDD, theta).persist()
+      println(s"‼️delta: $delta")
+      Thread.sleep(500)
     }
     while (delta > sigma)
     (theta, error)
@@ -245,7 +240,5 @@ object Main extends App {
   val err = res._2
   println(thetas.mkString("Array(", ",", ")"))
   println("☢️ error: ", err)
-
-
 }
 
