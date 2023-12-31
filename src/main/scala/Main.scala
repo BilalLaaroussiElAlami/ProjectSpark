@@ -7,10 +7,6 @@ import org.apache.log4j.Level
 import java.io.{File, IOException, PrintWriter}
 
 
-
-
-
-
 object Main extends App{
 
 
@@ -32,9 +28,6 @@ object Main extends App{
   conf.setAppName("Datasets Test")
   conf.setMaster("local[4]") //!!!!! TO REMOVE WHEN TESTING ON ISABELLE !!!!!!!
   val sc = new SparkContext(conf)
-  val x = sc.parallelize(List(1,2,3))
-  val y  = x.map(_*2);
-  //println(y.collect().mkString("Array(", ", ", ")"))
 
   type TextLength = Int
   type Tag = String
@@ -101,14 +94,8 @@ object Main extends App{
   }
 
   val pathData =  "./data/tweets"
-  /*
-  val tweetsJsonsRDD = sc.textFile(pathData).map(stringToJson).filter(_.nonEmpty).map(_.get).persist()    //persisting because we'll use this source multiple times so persisting avoids the data being read each time
-  tweetsJsonsRDD.foreach(println)
-  print("====================================================================")
-  val embeddedTweetsJsonsRDD = tweetsJsonsRDD.map(getEmbeddedTweet).filter(_.nonEmpty).map(_.get)
-  embeddedTweetsJsonsRDD.foreach(println("x", _))
-*/
-  val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get).persist()  //persisting because this source might be used in multiple pipelines
+
+  val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get).persist()  //persisting because this source will likely be used in multiple pipelines
   //tweets.collect().foreach(println)   //calling collect is not necessary locally
 
 /*
@@ -132,7 +119,8 @@ object Main extends App{
   type FeatureTuple = (X0, TextLength, FollowersCount, ReplyCount, RetweetCount, Likes)
   def extractFeatures(tweets: RDD[Tweet]): RDD[FeatureTuple] = tweets.map( twt => (1, twt.textLength, twt.followers_count,twt.reply_count,twt.retweet_count, twt.likes))
   val featureRDD = extractFeatures(tweets)
- // featureRDD.foreach(println)
+  featureRDD.foreach(println)
+  println("===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔")
 
 
   /*
@@ -140,9 +128,9 @@ object Main extends App{
   take sum of squared difference
    */
 
-  type accType = Tuple2[Int,List[Int]]
+  type accType = Tuple2[Int,List[Int]]   //(count, sums)
 
-  def seqOp(acc: accType , featureTuple: FeatureTuple) = {
+  def seqOpScale(acc: accType, featureTuple: FeatureTuple) = {
     val newCount = acc._1 + 1
     val oldSums  = acc._2
     val newSums  = List(
@@ -150,17 +138,17 @@ object Main extends App{
       oldSums(1)+ featureTuple._3,
       oldSums(2)+ featureTuple._4,
       oldSums(3)+ featureTuple._5,
-      oldSums(4)+ featureTuple._6)  //todo dependent variable stays same !!
+      oldSums(4) + featureTuple._6)  //dependent variable stays same !!
     (newCount,newSums)
   }
-  def binOp(accA: accType, accB: accType) = {
+  def binOpSquale(accA: accType, accB: accType) = {
     val newCount = accA._1 + accB._1
     val newSums =  accA._2.zip(accB._2).map(p => p._1 + p._2)
     (newCount,newSums)
   }
 
   def scaleFeatures (featureRDD: RDD[FeatureTuple]): RDD[Array[Double]] = {
-    val (count, sums)  = featureRDD.aggregate(0,List(0,0,0,0,0))(seqOp, binOp)
+    val (count, sums)  = featureRDD.aggregate(0,List(0,0,0,0,0))(seqOpScale, binOpSquale)  //iterates once over the RDD
     val means = sums.map(_/count)
 
     // (x_j^i - u_j)^2
@@ -203,7 +191,7 @@ object Main extends App{
         (featureTuple._3 - means(1)) / stdevs(1),
         (featureTuple._4 - means(2)) / stdevs(2),
         (featureTuple._5 - means(3)) / stdevs(3),
-        (featureTuple._6 - means(4)) / stdevs(4))
+        featureTuple._6)     //dependent variable should not be replaced by z value  (was: (featureTuple._6 - means(4)) / stdevs(4)))
     }
     featureRDD.map(calculateZvalues)
   }
@@ -275,8 +263,7 @@ object Main extends App{
   }
 
 
-  val n = scaledFeatureRDD.take(1)(0).length - 1
-
+  val n = scaledFeatureRDD.take(1)(0).length - 1  //minus the dependedent variable
   println("----------------n: ", n)
   val initialTheta = Array.fill(n)(0.0f)
   val alpha = 0.001f
