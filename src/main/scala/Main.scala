@@ -239,6 +239,6 @@ object Main extends App {
   val thetas = res._1
   val err = res._2
   println(thetas.mkString("Array(", ",", ")"))
-  println("☢️ error: ", err)
+  println("☢️ error: ", err) //yu
 }
 
