@@ -73,26 +73,9 @@ object Main extends App {
     Option(finalTweetObject)
   }
 
-  val pathData = "./data/tweets"
+  //val pathData = "./data/tweets"
+  //val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get)
 
-  val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get)
-
-  /*
-  text: String
-  ,
-  textLength: TextLength
-  ,
-  hashTags: Array[Tag]
-  ,
-  followers_count: Followers_count
-  ,
-  reply_count: Reply_count
-  ,
-  retweet_count: Retweet_count
-  ,
-  likes: Likes
-  )
-*/
   type Feature = Float
   type X0 = Int
   type FeatureTuple = (X0, TextLength, FollowersCount, ReplyCount, RetweetCount, Likes)
@@ -100,11 +83,11 @@ object Main extends App {
   //todo change to array of floats or doubles, but int works for now
   def extractFeatures(tweets: RDD[Tweet]): RDD[Array[Int]] = tweets.map(twt => Array(1, twt.textLength, twt.followers_count, twt.reply_count, twt.retweet_count, twt.likes))
 
-  val featureRDD = extractFeatures(tweets) //index 0 = X0, index i -> n-1 dependenrt variables, index n dependent variable
-  featureRDD.foreach(arr => println(arr.mkString("(",",",")")))
+  //val featureRDD = extractFeatures(tweets) //index 0 = X0, index i -> n-1 dependenrt variables, index n dependent variable
+  //featureRDD.foreach(arr => println(arr.mkString("(",",",")")))
   val NindependentVars = 4
 
-  println("===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔")
+  //println("===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔===🔔")
 
 
   /*
@@ -164,7 +147,7 @@ object Main extends App {
     featureRDD.map(calculateZvalues)
   }
 
-  val scaledFeatureRDD = scaleFeatures(featureRDD)
+  //val scaledFeatureRDD = scaleFeatures(featureRDD)
   //scaledFeatureRDD.foreach(arr =>  println(arr.mkString("(",",",")")))
 
 
@@ -181,14 +164,14 @@ object Main extends App {
       theta.zip(X).map(tpl => tpl._1 * tpl._2).sum
     }
   }
-
+/*
   def J(scaledFeatureRDD: RDD[Array[Double]], theta: Theta, m: Long): Double = {
     (1.0 / 2 * m) *
       scaledFeatureRDD.map { featureTuple =>
         Math.pow(H(theta, featureTuple.dropRight(1)) - featureTuple.last, 2)
       }.sum()
   }
-
+*/
   //RDDodCalculatedTerms : RDD of (hθ (X(i)) − y(i))
   def JV2(RDDofCalculatedTerms: RDD[Double], m: Long): Double = {
     val teller = RDDofCalculatedTerms.map(x => x * x).sum()
@@ -206,7 +189,7 @@ object Main extends App {
   }
 
   def gradientDescent(scaledFeatureRDD: RDD[Array[Double]], theta: Theta, alpha: Float, sigma: Float, m: Long) = {
-    if(initialTheta.length != NindependentVars + 1) throw new Exception("THETA LENGTH NOT CORRECT")
+    if(theta.length != NindependentVars + 1) throw new Exception("THETA LENGTH NOT CORRECT")
     var commonMap = CommonCalculation(scaledFeatureRDD, theta) //TODO change variable name
     var error = JV2(commonMap, m)
     var delta: Float = 0
@@ -221,14 +204,14 @@ object Main extends App {
       delta = (error - newError).toFloat
       error = newError
       commonMap = CommonCalculation(scaledFeatureRDD, theta).persist()
-      println(s"‼️delta: $delta")
-      Thread.sleep(500)
+      /*println(s"‼️delta: $delta")
+      Thread.sleep(500)*/
     }
     while (delta > sigma)
     (theta, error)
   }
 
-
+/*
   val n = scaledFeatureRDD.take(1)(0).length - 1 //minus the dependent variable
   println("----------------n: ", n)
   val initialTheta = Array.fill(n)(0.0f)
@@ -240,5 +223,39 @@ object Main extends App {
   val err = res._2
   println(thetas.mkString("Array(", ",", ")"))
   println("☢️ error: ", err) //yu
+ */
+
+  def main() = {
+    val pathData = "./data/tweets"
+
+    val parsing_startTime = System.nanoTime()
+    val tweets = sc.textFile(pathData).map(parseTweet).filter(_.isDefined).map(_.get)
+    val durationParsing = (System.nanoTime() - parsing_startTime) / 1e9
+
+    val extractFeatures_startTime = System.nanoTime()
+    val featureRDD = extractFeatures(tweets) //index 0 = X0, index i -> n-1 dependent variables, index n dependent variable
+    val durationExtracting = (System.nanoTime() - extractFeatures_startTime) / 1e9
+
+    val scaling_startTime = System.nanoTime()
+    val scaledFeatureRDD = scaleFeatures(featureRDD)
+    val durationScaling = (System.nanoTime() - scaling_startTime) / 1e9
+
+    val n = scaledFeatureRDD.take(1)(0).length - 1 //minus the dependent variable
+    val initialTheta = Array.fill(n)(0.0f)
+    val alpha = 0.001f
+    val sigma = 0.001f
+
+    val gradientDescent_startTime = System.nanoTime()
+    val m = featureRDD.count()
+    val res = gradientDescent(scaledFeatureRDD, initialTheta, alpha, sigma, m)
+    val durationGradientDescent = (System.nanoTime() - gradientDescent_startTime) / 1e9
+    val thetas = res._1
+    val err = res._2
+    /* println(thetas.mkString("Array(", ",", ")"))
+    println("☢️ error: ", err)*/
+    println(s"durationParsing : $durationParsing , durationExtracting : $durationExtracting , durationScaling : $durationScaling , durationGradientDescent : $durationGradientDescent")
+  }
+  main()
+
 }
 
