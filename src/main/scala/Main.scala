@@ -111,7 +111,20 @@ object Main extends App {
   }
 
   def scaleFeatures(featureRDD: RDD[Array[Int]]): RDD[Array[Double]] = {
-    val (count, sums) = featureRDD.aggregate(0, Array(0, 0, 0, 0, 0, 0))(seqOpScale, binOpSqale) //iterates once over the RDD
+    //val (count, sums) = featureRDD.aggregate(0, Array(0, 0, 0, 0, 0, 0))(seqOpScale, binOpSqale) //iterates once over the RDD
+
+    //same as line before but with lambdas copy pasted to please Isabelle
+    val (count, sums) = featureRDD.aggregate(0, Array(0, 0, 0, 0, 0, 0))(
+      (acc,featureArray) => {  //seqOpSCale function
+      val newCount = acc._1 + 1
+      val oldSums = acc._2
+      val newSums = oldSums.zip(featureArray).map(p => p._1 + p._2) //!! keep in mind that this will also sum up X0 and dependent variable !!
+      (newCount, newSums)},
+      (accA,accB) => {   //binopScale function
+        val newCount = accA._1 + accB._1
+        val newSums = accA._2.zip(accB._2).map(p => p._1 + p._2)
+        (newCount, newSums)
+      })
     val means = sums.map(_ / count)
 
     // RDD of (x_j^i - u_j)^2
